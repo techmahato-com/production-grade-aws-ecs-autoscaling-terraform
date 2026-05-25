@@ -827,6 +827,300 @@ Use [AWS Pricing Calculator](https://calculator.aws/) for precise estimates base
 
 ---
 
+## Implementation Approach
+
+The implementation is executed in structured phases:
+
+**Phase 1: Network and Foundation Setup**
+
+- Provision Virtual Private Cloud (VPC) with 10.0.0.0/16 CIDR
+- Configure 8 subnets across 2 Availability Zones (public, web, app, db)
+- Attach Internet Gateway and configure 2 NAT Gateways (one per AZ)
+- Establish route tables with proper network segmentation
+
+**Phase 2: Security Configuration**
+
+- Define Security Groups with chained trust model (ALB → Web → Internal ALB → App → DB)
+- Configure Network ACLs per tier as secondary defense layer
+- Create ECS Execution Role (image pulls, log writes)
+- Create ECS Task Role with SSM permissions for ECS Exec
+
+**Phase 3: Load Balancing**
+
+- Deploy internet-facing External ALB in public subnets
+- Deploy internal ALB in app subnets
+- Configure target groups with IP target type (required for Fargate)
+- Set up health checks with appropriate thresholds
+
+**Phase 4: ECS Fargate Deployment**
+
+- Create ECS Cluster with Container Insights enabled
+- Define task definitions for web (Nginx) and app (Tomcat) tiers
+- Deploy ECS services with deployment circuit breaker
+- Configure awsvpc networking with private subnets
+
+**Phase 5: Auto Scaling**
+
+- Register ECS services as scalable targets
+- Configure target-tracking policies on CPU utilization (70% target)
+- Set scale-out cooldown (60s) and scale-in cooldown (300s)
+- Define min/max task boundaries per environment
+
+**Phase 6: Database Deployment**
+
+- Deploy Amazon RDS MySQL in Multi-AZ configuration
+- Store credentials in AWS Secrets Manager (auto-generated)
+- Configure automated backups, maintenance windows
+- Enable storage encryption with AWS KMS
+
+**Phase 7: Monitoring and Observability**
+
+- Configure CloudWatch alarms for ECS CPU/Memory, RDS, ALB
+- Create pre-built CloudWatch dashboard with 6 widgets
+- Set up SNS topic for alarm notifications
+- Enable Container Insights for deep task-level metrics
+
+**Phase 8: Security Hardening**
+
+- Deploy AWS WAF with rate limiting and managed rule sets
+- Enable ALB invalid header field dropping
+- Configure deployment circuit breaker for rollback safety
+- Enable deletion protection on production resources
+
+---
+
+## Why ECS Fargate over EC2-Based Architecture
+
+| Aspect | EC2 + Auto Scaling | ECS Fargate |
+|--------|-------------------|-------------|
+| Server Management | You manage OS patching, AMI updates, instance health | AWS manages everything — no servers to maintain |
+| Scaling Speed | 2-5 minutes (launch instance + bootstrap) | 30-60 seconds (start container) |
+| Cost Model | Pay for full instance even at low utilization | Pay per-second for actual vCPU/memory used |
+| Security Surface | Full OS attack surface, SSH access needed | Minimal surface — no SSH, no OS access |
+| Deployment | Rolling instance replacement, complex userdata | Task definition update, automatic rolling deployment |
+| Debugging | SSH via bastion host | ECS Exec via SSM (no open ports) |
+| Capacity Planning | Choose instance types, manage capacity | Specify CPU/memory per task, AWS handles placement |
+| Networking | Instance-level ENI | Task-level ENI (awsvpc) — each task gets its own IP |
+| Startup Scripts | Userdata bash scripts (fragile, hard to test) | Docker images (reproducible, testable locally) |
+| Rollback | Complex — requires ASG instance refresh | Built-in circuit breaker with automatic rollback |
+
+---
+
+## Fargate Task Sizing Guide
+
+### Valid CPU and Memory Combinations
+
+| CPU (units) | Memory (MB) Options | Use Case |
+|-------------|-------------------|----------|
+| 256 (0.25 vCPU) | 512, 1024, 2048 | Lightweight proxies, sidecars |
+| 512 (0.5 vCPU) | 1024, 2048, 3072, 4096 | Web servers (Nginx), small APIs |
+| 1024 (1 vCPU) | 2048, 3072, 4096, 5120, 6144, 7168, 8192 | Application servers (Tomcat, Spring Boot) |
+| 2048 (2 vCPU) | 4096 – 16384 (1GB increments) | Heavy workloads, batch processing |
+| 4096 (4 vCPU) | 8192 – 30720 (1GB increments) | CPU-intensive applications |
+
+### Sizing Recommendations for This Project
+
+| Tier | Environment | CPU | Memory | Rationale |
+|------|-------------|-----|--------|-----------|
+| Web (Nginx) | Dev | 256 | 512 | Nginx is lightweight, minimal traffic |
+| Web (Nginx) | Prod | 512 | 1024 | Handles concurrent connections, security header processing |
+| App (Tomcat) | Dev | 256 | 512 | Minimal JVM footprint for testing |
+| App (Tomcat) | Prod | 1024 | 2048 | JVM needs heap space (-Xmx1024M), handles concurrent requests |
+
+### How to Right-Size
+
+1. Start with the recommended values above
+2. Monitor CPU and Memory utilization in CloudWatch Container Insights
+3. If average CPU > 70% consistently — increase CPU units
+4. If memory utilization > 80% — increase memory (JVM OOM kills are silent in Fargate)
+5. If average CPU < 20% — consider reducing to save cost
+
+---
+
+## CI/CD Integration Guide
+
+This infrastructure is designed to be pipeline-ready. Here's how to integrate:
+
+### Deployment Flow
+
+```
+Developer pushes code
+  ↓
+CI Pipeline (GitHub Actions / Jenkins / CodePipeline)
+  ↓
+Build Docker image
+  ↓
+Push to Amazon ECR
+  ↓
+Update ECS Task Definition (new image tag)
+  ↓
+ECS Rolling Deployment (automatic)
+  ↓
+Circuit Breaker monitors health checks
+  ↓
+Success → New version live
+Failure → Automatic rollback to previous version
+```
+
+### Sample GitHub Actions Workflow
+
+```yaml
+name: Deploy to ECS
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: us-east-1
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build, tag, and push image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t $ECR_REGISTRY/ecommerce-app:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/ecommerce-app:$IMAGE_TAG
+
+      - name: Update ECS service
+        run: |
+          aws ecs update-service \
+            --cluster ecommerce-prod-cluster \
+            --service ecommerce-prod-app \
+            --force-new-deployment
+```
+
+### Blue/Green Deployment (Advanced)
+
+For zero-downtime deployments with instant rollback capability, integrate with AWS CodeDeploy:
+
+1. Create a CodeDeploy application targeting ECS
+2. Define two target groups (blue and green)
+3. CodeDeploy shifts traffic gradually (10% → 50% → 100%)
+4. If alarms fire during shift — automatic rollback to blue
+
+---
+
+## Disaster Recovery and High Availability
+
+### Built-In HA Mechanisms
+
+| Component | HA Strategy | RTO | RPO |
+|-----------|-------------|-----|-----|
+| ECS Tasks | Multi-AZ deployment, min 2 tasks | ~30 seconds | 0 (stateless) |
+| External ALB | Multi-AZ by default | Automatic | N/A |
+| Internal ALB | Multi-AZ by default | Automatic | N/A |
+| RDS MySQL | Multi-AZ synchronous replication | ~60 seconds | 0 (sync replication) |
+| NAT Gateway | One per AZ (independent) | Automatic | N/A |
+
+### Failure Scenarios and Recovery
+
+**Scenario 1: Single task failure**
+- ECS detects unhealthy task via ALB health check
+- Automatically launches replacement task in same AZ
+- Recovery time: 30-60 seconds
+
+**Scenario 2: Entire AZ failure**
+- ALB stops routing to unhealthy AZ
+- ECS launches replacement tasks in surviving AZ
+- RDS fails over to standby (if primary was in failed AZ)
+- Recovery time: 60-120 seconds
+
+**Scenario 3: Bad deployment**
+- Circuit breaker detects health check failures
+- Automatically rolls back to previous task definition
+- Recovery time: 60-90 seconds (no manual intervention)
+
+### Backup Strategy
+
+| Resource | Backup Method | Retention | Recovery |
+|----------|--------------|-----------|----------|
+| RDS | Automated daily snapshots | 7 days (prod) | Point-in-time restore |
+| Terraform State | S3 versioning + DynamoDB lock | Indefinite | Restore from S3 version |
+| Container Images | ECR with immutable tags | Indefinite | Redeploy previous tag |
+| Infrastructure | Terraform code in Git | Indefinite | `terraform apply` from any commit |
+
+---
+
+## Security Compliance Alignment
+
+This architecture addresses requirements for common compliance frameworks:
+
+| Requirement | Implementation | Frameworks |
+|-------------|---------------|------------|
+| Encryption at rest | RDS storage encryption, EBS encryption | SOC2, HIPAA, PCI-DSS |
+| Encryption in transit | ALB HTTPS (ACM ready), internal VPC traffic | SOC2, HIPAA, PCI-DSS |
+| Network segmentation | 4-tier subnet isolation, NACLs, Security Groups | PCI-DSS, ISO 27001 |
+| Least privilege access | ECS task roles with minimal permissions | SOC2, ISO 27001 |
+| Audit logging | VPC Flow Logs, CloudWatch Logs, CloudTrail | SOC2, HIPAA, PCI-DSS |
+| Secrets management | AWS Secrets Manager for DB credentials | SOC2, PCI-DSS |
+| Vulnerability scanning | ECR image scanning on push | SOC2, PCI-DSS |
+| Automated patching | Fargate manages OS/runtime patches | All frameworks |
+| Access control | No SSH, ECS Exec with IAM authentication | SOC2, ISO 27001 |
+| Data isolation | DB subnet has no internet route | PCI-DSS, HIPAA |
+
+---
+
+## Performance Optimization Tips
+
+### Nginx (Web Tier)
+
+- Configure `worker_processes auto` to match Fargate vCPU allocation
+- Enable `gzip` compression for text-based responses
+- Set `keepalive` connections to Internal ALB to reduce TCP overhead
+- Cache static assets with appropriate `Cache-Control` headers
+
+### Tomcat (App Tier)
+
+- Set JVM heap size to ~75% of task memory (`-Xmx1536M` for 2048MB task)
+- Use G1GC garbage collector for predictable pause times
+- Enable connection pooling for RDS connections (HikariCP recommended)
+- Configure Tomcat thread pool based on expected concurrent requests
+
+### RDS (Data Tier)
+
+- Enable Performance Insights for query-level analysis
+- Use `gp3` storage for consistent IOPS without burst credits
+- Monitor `DatabaseConnections` alarm to detect connection leaks
+- Consider read replicas if read-heavy workload exceeds single instance capacity
+
+### ALB
+
+- Enable access logs to S3 for request-level debugging
+- Monitor `TargetResponseTime` metric for latency trends
+- Use connection draining (deregistration delay) during deployments
+- Consider cross-zone load balancing for even distribution
+
+---
+
+## Terraform Best Practices Used
+
+| Practice | Implementation | Benefit |
+|----------|---------------|---------|
+| Remote State | S3 + DynamoDB locking | Team collaboration, state protection |
+| Module Composition | 7 independent modules | Reusability, separation of concerns |
+| Environment Isolation | Separate tfvars per environment | Prevent accidental cross-env changes |
+| Variable Validation | `contains()` on environment variable | Catch errors before apply |
+| Default Tags | Provider-level default tags | Consistent resource tagging |
+| Lifecycle Rules | `ignore_changes` on desired_count | Prevent Terraform from fighting auto scaling |
+| Output Values | Cluster name, ALB DNS, exec commands | Easy operational access |
+| Version Constraints | `required_version >= 1.5`, provider `~> 5.0` | Reproducible builds |
+
+---
+
 ## Out of Scope
 
 - Application code development or modification
