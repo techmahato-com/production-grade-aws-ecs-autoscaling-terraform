@@ -8,6 +8,58 @@ Enterprise-grade, fully automated AWS infrastructure for deploying a Java-based 
 
 ## 📐 Architecture Overview
 
+![AWS ECS Fargate 3-Tier Architecture Diagram](docs/network-giagram.png)
+
+```mermaid
+graph TB
+    Internet((Internet)) --> WAF[AWS WAF]
+    WAF --> IGW[Internet Gateway]
+    IGW --> ExtALB[External ALB<br/>Internet-Facing]
+
+    subgraph VPC["VPC 10.0.0.0/16"]
+        subgraph Public["Public Subnets"]
+            ExtALB
+            NAT1[NAT GW<br/>AZ-1a]
+            NAT2[NAT GW<br/>AZ-1b]
+        end
+
+        subgraph Web["Private Subnets — Web Tier"]
+            Nginx1[ECS Fargate<br/>Nginx Task<br/>AZ-1a]
+            Nginx2[ECS Fargate<br/>Nginx Task<br/>AZ-1b]
+        end
+
+        subgraph AppLB["Internal Load Balancer"]
+            IntALB[Internal ALB]
+        end
+
+        subgraph App["Private Subnets — App Tier"]
+            Tomcat1[ECS Fargate<br/>Tomcat Task<br/>AZ-1a]
+            Tomcat2[ECS Fargate<br/>Tomcat Task<br/>AZ-1b]
+        end
+
+        subgraph DB["Private Subnets — Data Tier (Isolated)"]
+            RDS1[(RDS MySQL<br/>Primary)]
+            RDS2[(RDS MySQL<br/>Standby)]
+        end
+    end
+
+    ExtALB --> Nginx1
+    ExtALB --> Nginx2
+    Nginx1 --> IntALB
+    Nginx2 --> IntALB
+    IntALB --> Tomcat1
+    IntALB --> Tomcat2
+    Tomcat1 --> RDS1
+    Tomcat2 --> RDS1
+    RDS1 -.->|sync| RDS2
+
+    CW[CloudWatch<br/>Container Insights] -.-> Web
+    CW -.-> App
+
+    style Public fill:#e8f5e9,stroke:#4caf50
+    style Web fill:#e3f2fd,stroke:#2196f3
+    style App fill:#e3f2fd,stroke:#2196f3
+    style DB fill:#fce4ec,stroke:#f44336
 ```
                          ┌──────────────┐
                          │  CloudFront   │ (Optional CDN)
