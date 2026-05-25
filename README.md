@@ -1,4 +1,4 @@
-# 🏗️ Production-Grade AWS ECS Fargate 3-Tier Architecture with Auto Scaling — Terraform
+# Production-Grade AWS ECS Fargate 3-Tier Architecture with Auto Scaling — Terraform
 
 ![Terraform](https://img.shields.io/badge/Terraform-%3E%3D1.5-purple) ![AWS](https://img.shields.io/badge/AWS-ECS%20Fargate-orange) ![License: MIT](https://img.shields.io/badge/License-MIT-green)
 
@@ -6,9 +6,7 @@ Enterprise-grade, fully automated AWS infrastructure for deploying a Java-based 
 
 ---
 
-## 📐 Architecture Overview
-
-![AWS ECS Fargate 3-Tier Architecture Diagram](docs/network-giagram.png)
+## Architecture Overview
 
 ```mermaid
 graph TB
@@ -60,6 +58,8 @@ graph TB
     style Web fill:#e3f2fd,stroke:#2196f3
     style App fill:#e3f2fd,stroke:#2196f3
     style DB fill:#fce4ec,stroke:#f44336
+```
+
 ```
                          ┌──────────────┐
                          │  CloudFront   │ (Optional CDN)
@@ -115,7 +115,7 @@ graph TB
 
 ---
 
-## 📋 Project Overview
+## Project Overview
 
 ### Executive Summary
 
@@ -123,13 +123,13 @@ The project deploys a **production-grade Java-based web application** on AWS lev
 
 The solution is designed to:
 
-- ✅ Ensure high availability across multiple Availability Zones
-- ✅ Enable dynamic scalability using ECS Service Auto Scaling
-- ✅ Enforce security best practices across all layers
-- ✅ Eliminate server management with serverless containers (Fargate)
-- ✅ Integrate CI/CD pipelines for automated container deployments
+- Ensure high availability across multiple Availability Zones
+- Enable dynamic scalability using ECS Service Auto Scaling
+- Enforce security best practices across all layers
+- Eliminate server management with serverless containers (Fargate)
+- Integrate CI/CD pipelines for automated container deployments
 
-> 📌 The solution adopts a multi-tier architecture with clear separation of presentation, application, and data layers, ensuring modular scalability and fault isolation.
+> The solution adopts a multi-tier architecture with clear separation of presentation, application, and data layers, ensuring modular scalability and fault isolation.
 
 ### Three Tiers
 
@@ -141,7 +141,7 @@ The solution is designed to:
 
 ---
 
-## 🚀 Key Features
+## Key Features
 
 - **Serverless Containers** — ECS Fargate eliminates EC2 instance management, patching, and capacity planning
 - **High Availability** — Multi-AZ deployment across us-east-1a and us-east-1b with automated failover
@@ -155,7 +155,7 @@ The solution is designed to:
 
 ---
 
-## 🗂️ Project Structure
+## Project Structure
 
 ```
 production-grade-aws-ecs-autoscaling-terraform/
@@ -196,7 +196,7 @@ production-grade-aws-ecs-autoscaling-terraform/
 
 ---
 
-## 🌐 Network Deep Dive
+## Network Deep Dive
 
 ### VPC Structure
 
@@ -256,7 +256,7 @@ DB Route Table:
 
 ---
 
-## 🔄 Complete Traffic Flow (Step by Step)
+## Complete Traffic Flow (Step by Step)
 
 Understanding how a user request travels through the entire infrastructure:
 
@@ -302,11 +302,11 @@ Step 9: Response travels back:
         RDS → Tomcat → Internal ALB → Nginx → External ALB → User
 ```
 
-> 📌 At no point does the user's request directly touch Nginx, Tomcat, or RDS. Everything goes through load balancers. This is the defense-in-depth model.
+> At no point does the user's request directly touch Nginx, Tomcat, or RDS. Everything goes through load balancers. This is the defense-in-depth model.
 
 ---
 
-## 🔐 Security Deep Dive
+## Security Deep Dive
 
 ### Security Group Chain (The Trust Chain)
 
@@ -405,7 +405,7 @@ Outbound:
   Rule 100: Allow TCP 1024-65535 to VPC CIDR ONLY (responses back)
 ```
 
-> 📌 **Why both SGs AND NACLs?** Defense in depth. If someone misconfigures a Security Group, the NACL is still there as a safety net. NACLs are evaluated BEFORE SGs.
+> **Why both SGs AND NACLs?** Defense in depth. If someone misconfigures a Security Group, the NACL is still there as a safety net. NACLs are evaluated BEFORE SGs.
 
 ### IAM Roles (Least Privilege)
 
@@ -427,7 +427,7 @@ Outbound:
 
 ---
 
-## 🔄 ECS Auto Scaling Deep Dive
+## ECS Auto Scaling Deep Dive
 
 ### How Scaling Works
 
@@ -454,7 +454,7 @@ min=2, desired=2         │  Task 3  │ ← NEW            desired=2 (back to 
 | Min Tasks | 2 (prod) | Always running for HA |
 | Max Tasks | 6 | Cost ceiling |
 
-### Why Target Tracking > Simple Scaling?
+### Why Target Tracking over Simple Scaling?
 
 - **Simple Scaling** (old ASG approach): You define separate scale-out and scale-in alarms manually
 - **Target Tracking** (ECS approach): You say "keep CPU at 70%" and AWS handles everything — creates alarms, calculates how many tasks to add/remove, manages cooldowns
@@ -474,7 +474,7 @@ No manual intervention needed. Failed deployments are automatically reverted.
 
 ---
 
-## 🗄️ Database Deep Dive
+## Database Deep Dive
 
 ### Multi-AZ — How Failover Works
 
@@ -515,14 +515,14 @@ The DNS endpoint stays the same — your app doesn't need any code change. AWS f
 
 | Feature | Prod | Dev/Staging |
 |---------|------|-------------|
-| Deletion protection | ✅ Enabled | ❌ Disabled |
-| Final snapshot | ✅ Taken before destroy | ❌ Skipped |
+| Deletion protection | Enabled | Disabled |
+| Final snapshot | Taken before destroy | Skipped |
 | Backup retention | 7 days | 1-3 days |
 | Instance class | db.t3.medium | db.t3.micro |
 
 ---
 
-## ⚖️ Load Balancer Deep Dive
+## Load Balancer Deep Dive
 
 ### Why TWO ALBs?
 
@@ -567,7 +567,7 @@ Web Target Group:
 
 ---
 
-## 🛡️ WAF Deep Dive
+## WAF Deep Dive
 
 The WAF sits in front of the External ALB with 4 rules:
 
@@ -582,7 +582,7 @@ All rules have CloudWatch metrics enabled + sampled requests for debugging.
 
 ---
 
-## 📊 Monitoring Deep Dive
+## Monitoring Deep Dive
 
 ### CloudWatch Alarms
 
@@ -623,12 +623,12 @@ Enabled at cluster level — provides:
 
 ---
 
-## 🛠️ Prerequisites
+## Prerequisites
 
 | Tool | Version | Purpose |
 |------|---------|---------|
 | Terraform | >= 1.5 | Infrastructure provisioning |
-| AWS CLI | v2 | AWS authentication & interaction |
+| AWS CLI | v2 | AWS authentication and interaction |
 | Docker | Latest | Build container images |
 | Git | Latest | Version control |
 | AWS Account | — | With IAM user having programmatic access |
@@ -645,7 +645,7 @@ aws configure
 
 ---
 
-## ⚡ Quick Start
+## Quick Start
 
 ```bash
 # 1. Clone the repository
@@ -679,7 +679,7 @@ terraform destroy -var-file=environments/prod/terraform.tfvars
 
 ---
 
-## 🌍 Environment Configuration
+## Environment Configuration
 
 Three environments with different sizing:
 
@@ -692,7 +692,7 @@ Three environments with different sizing:
 | App CPU/Memory | 256/512 | 512/1024 | 1024/2048 |
 | RDS Instance | db.t3.micro | db.t3.micro | db.t3.medium |
 | Backup Retention | 1 day | 3 days | 7 days |
-| Deletion Protection | ❌ | ❌ | ✅ |
+| Deletion Protection | No | No | Yes |
 
 Deploy any environment:
 
@@ -702,9 +702,14 @@ terraform apply -var-file=environments/staging/terraform.tfvars
 terraform apply -var-file=environments/prod/terraform.tfvars
 ```
 
+### What You Need to Change Before Deploying
+
+1. Update `backend.tf` with your actual S3 bucket name for remote state
+2. Replace container images with your ECR URLs (or use defaults for testing)
+
 ---
 
-## 🐳 Container Images
+## Container Images
 
 Replace the default images in your tfvars with your ECR repository URLs:
 
@@ -717,14 +722,9 @@ Default images for testing:
 - **Web Tier**: `nginx:latest`
 - **App Tier**: `tomcat:11-jdk21`
 
-### What You Need to Change Before Deploying
-
-1. Update `backend.tf` with your actual S3 bucket name for remote state
-2. Replace container images with your ECR URLs (or use defaults for testing)
-
 ---
 
-## 🔧 Day-to-Day Operations
+## Day-to-Day Operations
 
 ### ECS Exec (Replaces SSH/Bastion)
 
@@ -796,7 +796,7 @@ infracost breakdown --path .
 
 ---
 
-## 🔧 Troubleshooting
+## Troubleshooting
 
 | Issue | Command | Resolution |
 |-------|---------|------------|
@@ -810,24 +810,24 @@ infracost breakdown --path .
 
 ---
 
-## 💰 Estimated Monthly Cost
+## Estimated Monthly Cost
 
 | Resource | Specification | Est. Cost (USD) |
 |----------|--------------|-----------------|
-| ECS Fargate (Web) | 2 tasks × 0.5 vCPU / 1GB | ~$30 |
-| ECS Fargate (App) | 2 tasks × 1 vCPU / 2GB | ~$60 |
-| ALB (External + Internal) | 2× ALB | ~$35 |
+| ECS Fargate (Web) | 2 tasks x 0.5 vCPU / 1GB | ~$30 |
+| ECS Fargate (App) | 2 tasks x 1 vCPU / 2GB | ~$60 |
+| ALB (External + Internal) | 2x ALB | ~$35 |
 | RDS MySQL | db.t3.medium, Multi-AZ | ~$70 |
-| NAT Gateway | 2× (per AZ) | ~$65 |
+| NAT Gateway | 2x (per AZ) | ~$65 |
 | CloudWatch | Metrics + Logs + Insights | ~$15 |
 | S3 (State + Logs) | Minimal storage | ~$2 |
 | **Total** | | **~$277/month** |
 
-> 💡 Use [AWS Pricing Calculator](https://calculator.aws/) for precise estimates based on your workload.
+Use [AWS Pricing Calculator](https://calculator.aws/) for precise estimates based on your workload.
 
 ---
 
-## 📌 Out of Scope
+## Out of Scope
 
 - Application code development or modification
 - Data migration from legacy systems
@@ -840,7 +840,7 @@ infracost breakdown --path .
 
 ---
 
-## 🤝 Contributing
+## Contributing
 
 1. Fork the repository
 2. Create a feature branch (`git checkout -b feature/amazing-feature`)
@@ -850,7 +850,7 @@ infracost breakdown --path .
 
 ---
 
-## 👨‍💻 About Me
+## About Me
 
 Hi, I'm **Arbind Mahato** — Senior Cloud & DevOps Engineer specializing in AWS, Kubernetes, and DevSecOps.
 
@@ -860,21 +860,21 @@ I share real-world DevOps projects, tutorials, and cloud architecture insights t
 
 ---
 
-## ⭐ Support
+## Support
 
 If you found this project helpful:
 
-- ⭐ Star this repository
-- 🔀 Fork it and build your own version
-- 📢 Share it with your network
-- 🐛 Report issues or suggest improvements
+- Star this repository
+- Fork it and build your own version
+- Share it with your network
+- Report issues or suggest improvements
 
 ---
 
-## 📄 License
+## License
 
 This project is licensed under the MIT License — see the [LICENSE](LICENSE) file for details.
 
 ---
 
-> Built with ❤️ by [Arbind Mahato](https://github.com/arbindmahato) | TechMahato
+Built by [Arbind Mahato](https://github.com/arbindmahato) | TechMahato
